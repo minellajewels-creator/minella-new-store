@@ -1,0 +1,9 @@
+.env.local
+.next/
+node_modules/
+service-account.json
+scripts/service-account.json
+*.log
+.DS_Store
+
+.vercel

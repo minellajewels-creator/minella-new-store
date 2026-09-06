@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Products: public read, no writes from client
+    match /products/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    // Orders: no client reads, writes go through API routes only
+    match /orders/{id} {
+      allow read, write: if false;
+    }
+  }
+}
