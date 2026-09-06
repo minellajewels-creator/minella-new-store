@@ -7,7 +7,6 @@ const PAYU_SALT = process.env.PAYU_SALT || "";
 const GAS_URL = process.env.GAS_URL || "";
 
 function verifyReverseHash(params: Record<string, string>): boolean {
-  // PayU reverse hash: salt|status||||||udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key
   const {
     hash,
     key,
@@ -26,6 +25,30 @@ function verifyReverseHash(params: Record<string, string>): boolean {
   const hashStr = `${PAYU_SALT}|${status}|${udf5}|${udf4}|${udf3}|${udf2}|${udf1}|${email}|${firstname}|${productinfo}|${amount}|${txnid}|${key}`;
   const expected = crypto.createHash("sha512").update(hashStr).digest("hex");
   return expected === hash;
+}
+
+async function decrementStock(
+  db: FirebaseFirestore.Firestore,
+  cartDataStr: string,
+) {
+  try {
+    const cart: Array<{ id: string; qty: number }> = JSON.parse(
+      cartDataStr || "[]",
+    );
+    if (!cart.length) return;
+    await db.runTransaction(async (tx) => {
+      for (const item of cart) {
+        if (!item.id) continue;
+        const ref = db.collection("products").doc(String(item.id));
+        const snap = await tx.get(ref);
+        if (!snap.exists) continue;
+        const cur = (snap.data()?.stocks ?? 0) as number;
+        tx.update(ref, { stocks: Math.max(0, cur - item.qty) });
+      }
+    });
+  } catch (e) {
+    console.error("decrementStock error:", e);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -77,7 +100,10 @@ export async function POST(req: NextRequest) {
           updatedAt: new Date(),
         });
 
-        // GAS sends the confirmation email
+        // Deduct stock only now — payment confirmed
+        await decrementStock(db, orderData.cartData || "[]");
+
+        // GAS sends confirmation email
         if (GAS_URL) {
           fetch(GAS_URL, {
             method: "POST",
@@ -101,6 +127,7 @@ export async function POST(req: NextRequest) {
           new URL(`/success?method=online&txnid=${txnid}`, STORE_URL),
         );
       } else {
+        // Payment failed/cancelled — restore stock is NOT needed since we never deducted it
         await orderRef.update({
           status: "Payment Failed",
           updatedAt: new Date(),

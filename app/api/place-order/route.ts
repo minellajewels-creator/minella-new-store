@@ -16,6 +16,22 @@ function generateOrderId() {
   return `MNL-${date}-${rand}`;
 }
 
+async function decrementStock(
+  db: FirebaseFirestore.Firestore,
+  cart: Array<{ id: string; qty: number }>,
+) {
+  await db.runTransaction(async (tx) => {
+    for (const item of cart) {
+      if (!item.id) continue;
+      const ref = db.collection("products").doc(String(item.id));
+      const snap = await tx.get(ref);
+      if (!snap.exists) continue;
+      const cur = (snap.data()?.stocks ?? 0) as number;
+      tx.update(ref, { stocks: Math.max(0, cur - item.qty) });
+    }
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -83,47 +99,37 @@ export async function POST(req: NextRequest) {
       createdAt: new Date(),
     });
 
-    // Decrement stock
-    await db.runTransaction(async (tx) => {
-      for (const item of cart) {
-        if (!item.id) continue;
-        const ref = db.collection("products").doc(String(item.id));
-        const snap = await tx.get(ref);
-        if (!snap.exists) continue;
-        const cur = (snap.data()?.stocks ?? 0) as number;
-        tx.update(ref, { stocks: Math.max(0, cur - item.qty) });
-      }
-    });
-
-    // Call GAS for email only
-    if (GAS_URL) {
-      fetch(GAS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-          action: isCod ? "sendCodEmail" : "sendAwaitingEmail",
-          orderId,
-          txnid,
-          name,
-          phone,
-          email,
-          address,
-          items,
-          subtotal: verifiedSubtotal,
-          shipping: verifiedShipping,
-          codCharge: verifiedCodCharge,
-          grandTotal: verifiedGrand,
-          paymentMethod,
-        }),
-      }).catch(() => {});
-    }
-
     if (isCod) {
+      // COD: deduct stock immediately + send email
+      await decrementStock(db, cart);
+
+      if (GAS_URL) {
+        fetch(GAS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "sendCodEmail",
+            orderId,
+            txnid,
+            name,
+            phone,
+            email,
+            address,
+            items,
+            subtotal: verifiedSubtotal,
+            shipping: verifiedShipping,
+            codCharge: verifiedCodCharge,
+            grandTotal: verifiedGrand,
+            paymentMethod,
+          }),
+        }).catch(() => {});
+      }
+
       return NextResponse.json({ ok: true, orderId });
     }
 
+    // Online payment: do NOT deduct stock yet — webhook handles it after PayU confirms
     // Build PayU fields
-    // Hash: key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5||||||salt
     const amount = verifiedGrand.toFixed(2);
     const productinfo = `Minella Jewels Order ${orderId}`;
     const firstname = name.split(" ")[0];
