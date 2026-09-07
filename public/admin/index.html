@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Minella Admin</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #F7F5F2;
+    --surface:  #FFFFFF;
+    --border:   #E8E3DC;
+    --rose:     #C9717A;
+    --rose-dim: #F2E8E9;
+    --gold:     #B89A5E;
+    --text:     #2C2420;
+    --muted:    #8A7E78;
+    --green:    #3D8A5E;
+    --green-bg: #EAF4EE;
+    --amber:    #B87333;
+    --amber-bg: #FDF3E7;
+    --red:      #C0392B;
+    --red-bg:   #FDECEA;
+    --blue:     #2B6CB0;
+    --blue-bg:  #EBF4FF;
+    --sidebar-w: 220px;
+    --header-h:  60px;
+    --radius:    10px;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── LOGIN SCREEN ── */
+  #login-screen {
+    position: fixed; inset: 0; background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  .setup-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 40px 44px; width: 460px;
+    box-shadow: 0 4px 40px rgba(0,0,0,.07);
+  }
+  .setup-logo { font-family: 'Playfair Display', serif; font-size: 24px; color: var(--rose); margin-bottom: 6px; }
+  .setup-sub  { font-size: 13px; color: var(--muted); margin-bottom: 28px; }
+  .setup-card label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 5px; margin-top: 14px; text-transform: uppercase; letter-spacing: .04em; }
+  .setup-card input {
+    width: 100%; padding: 9px 12px; border: 1px solid var(--border);
+    border-radius: 7px; font-size: 13px; font-family: inherit;
+    background: var(--bg); color: var(--text); outline: none;
+    transition: border-color .2s;
+  }
+  .setup-card input:focus { border-color: var(--rose); }
+  .btn-primary {
+    margin-top: 22px; width: 100%; padding: 11px;
+    background: var(--rose); color: #fff; border: none;
+    border-radius: 8px; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background .2s;
+  }
+  .btn-primary:hover { background: #b5626b; }
+  .setup-note { font-size: 11.5px; color: var(--muted); margin-top: 14px; line-height: 1.5; }
+
+  /* ── SHELL ── */
+  #app { display: none; flex: 1; flex-direction: column; }
+
+  /* Header */
+  .header {
+    height: var(--header-h); background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center;
+    padding: 0 20px; gap: 14px; position: sticky; top: 0; z-index: 50;
+  }
+  .header-logo { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--rose); letter-spacing: .02em; }
+  .header-divider { width: 1px; height: 20px; background: var(--border); }
+  .header-title { font-size: 14px; font-weight: 500; color: var(--muted); }
+  .header-spacer { flex: 1; }
+  .header-badge { font-size: 12px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; }
+  .btn-logout { padding: 6px 14px; border: 1px solid var(--border); background: transparent; border-radius: 7px; font-size: 13px; cursor: pointer; color: var(--muted); transition: all .2s; }
+  .btn-logout:hover { border-color: var(--rose); color: var(--rose); }
+
+  /* Body layout */
+  .body { display: flex; flex: 1; overflow: hidden; }
+
+  /* Sidebar */
+  .sidebar {
+    width: var(--sidebar-w); background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 16px 10px; display: flex; flex-direction: column; gap: 4px;
+    flex-shrink: 0; height: calc(100vh - var(--header-h)); position: sticky; top: var(--header-h);
+    overflow-y: auto;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border-radius: 8px;
+    font-size: 13.5px; font-weight: 500; cursor: pointer;
+    transition: background .15s, color .15s;
+    color: var(--muted); border: none; background: transparent; width: 100%; text-align: left;
+  }
+  .nav-item:hover { background: var(--bg); color: var(--text); }
+  .nav-item.active { background: var(--rose-dim); color: var(--rose); }
+  .nav-icon { width: 18px; height: 18px; flex-shrink: 0; }
+  .nav-count { margin-left: auto; font-size: 11px; font-weight: 600;
+    background: var(--rose); color: #fff; border-radius: 10px; padding: 1px 7px; }
+  .sidebar-section { font-size: 10.5px; font-weight: 600; color: #BEB5AE;
+    letter-spacing: .08em; padding: 14px 12px 4px; text-transform: uppercase; }
+
+  /* Main content */
+  .main { flex: 1; overflow-y: auto; padding: 28px 32px; }
+
+  /* Page headers */
+  .page-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+  .page-title { font-family: 'Playfair Display', serif; font-size: 22px; }
+  .page-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  /* KPI cards */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+  .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 22px; }
+  .kpi-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .kpi-val { font-size: 28px; font-weight: 600; margin-top: 6px; line-height: 1; }
+  .kpi-sub { font-size: 12px; color: var(--muted); margin-top: 5px; }
+  .kpi-rose .kpi-val { color: var(--rose); }
+  .kpi-gold .kpi-val { color: var(--gold); }
+  .kpi-green .kpi-val { color: var(--green); }
+
+  /* Tables */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .table-toolbar { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .tbl-title { font-size: 14px; font-weight: 600; }
+  .tbl-spacer { flex: 1; }
+  .search-box { position: relative; }
+  .search-box input { padding: 7px 12px 7px 32px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; font-family: inherit; background: var(--bg); color: var(--text); outline: none; width: 200px; transition: border-color .2s; }
+  .search-box input:focus { border-color: var(--rose); }
+  .search-box svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+  .filter-select { padding: 7px 10px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; font-family: inherit; background: var(--bg); color: var(--text); cursor: pointer; outline: none; }
+  .btn-sm { padding: 7px 14px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all .2s; border: 1px solid transparent; }
+  .btn-rose { background: var(--rose); color: #fff; }
+  .btn-rose:hover { background: #b5626b; }
+  .btn-outline { background: transparent; border-color: var(--border); color: var(--text); }
+  .btn-outline:hover { border-color: var(--rose); color: var(--rose); }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tbody tr { border-bottom: 1px solid var(--bg); transition: background .1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: #FAFAF8; }
+  td { padding: 13px 16px; font-size: 13.5px; vertical-align: middle; }
+  td.mono { font-family: 'Courier New', monospace; font-size: 12px; }
+  .td-actions { display: flex; gap: 6px; }
+  .icon-btn { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--border); background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .2s; color: var(--muted); }
+  .icon-btn:hover { border-color: var(--rose); color: var(--rose); background: var(--rose-dim); }
+  .icon-btn.danger:hover { border-color: var(--red); color: var(--red); background: var(--red-bg); }
+
+  /* Badges */
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 20px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+  .badge-green  { background: var(--green-bg);  color: var(--green); }
+  .badge-amber  { background: var(--amber-bg);  color: var(--amber); }
+  .badge-red    { background: var(--red-bg);    color: var(--red); }
+  .badge-blue   { background: var(--blue-bg);   color: var(--blue); }
+  .badge-muted  { background: var(--bg);        color: var(--muted); border: 1px solid var(--border); }
+
+  /* Stock cell */
+  .stock-edit { display: flex; align-items: center; gap: 6px; }
+  .stock-num { min-width: 28px; text-align: center; font-weight: 600; }
+  .stock-btn { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); cursor: pointer; font-size: 16px; line-height: 1; display: flex; align-items: center; justify-content: center; transition: all .15s; color: var(--text); }
+  .stock-btn:hover { background: var(--rose-dim); border-color: var(--rose); color: var(--rose); }
+  .stock-input { width: 60px; padding: 5px 8px; border: 1px solid var(--rose); border-radius: 6px; font-size: 13px; font-family: inherit; outline: none; text-align: center; }
+
+  /* Product thumb */
+  .prod-thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border); background: var(--bg); }
+  .prod-info { display: flex; align-items: center; gap: 10px; }
+  .prod-name { font-weight: 500; font-size: 13.5px; }
+  .prod-cat  { font-size: 11.5px; color: var(--muted); }
+
+  /* Empty / loading states */
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-state .big { font-size: 38px; margin-bottom: 10px; }
+  .empty-state p { font-size: 14px; }
+  .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--rose); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 40px auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(30,20,18,.35);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 200; backdrop-filter: blur(2px);
+  }
+  .modal {
+    background: var(--surface); border-radius: 14px;
+    padding: 28px 32px; width: 520px; max-width: 94vw;
+    max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,.15);
+  }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .modal-title { font-family: 'Playfair Display', serif; font-size: 19px; }
+  .modal-close { width: 32px; height: 32px; border: none; background: var(--bg); border-radius: 8px; cursor: pointer; font-size: 18px; color: var(--muted); display: flex; align-items: center; justify-content: center; transition: all .2s; }
+  .modal-close:hover { background: var(--rose-dim); color: var(--rose); }
+  .field-group { margin-bottom: 16px; }
+  .field-group label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .04em; }
+  .field-group input, .field-group select, .field-group textarea {
+    width: 100%; padding: 9px 12px; border: 1px solid var(--border);
+    border-radius: 7px; font-size: 13px; font-family: inherit;
+    background: var(--bg); color: var(--text); outline: none; resize: vertical;
+    transition: border-color .2s;
+  }
+  .field-group input:focus, .field-group select:focus, .field-group textarea:focus { border-color: var(--rose); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+
+  /* Toast */
+  .toast-wrap { position: fixed; bottom: 24px; right: 24px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
+  .toast { padding: 11px 18px; border-radius: 9px; font-size: 13.5px; font-weight: 500; color: #fff; display: flex; align-items: center; gap: 8px; animation: slideUp .25s ease; box-shadow: 0 4px 20px rgba(0,0,0,.18); }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .toast-success { background: var(--green); }
+  .toast-error   { background: var(--red); }
+  .toast-info    { background: var(--gold); }
+
+  /* Order detail items */
+  .order-items-list { list-style: none; }
+  .order-items-list li { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--bg); font-size: 13.5px; }
+  .order-items-list li:last-child { border-bottom: none; }
+  .order-summary-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13.5px; color: var(--muted); }
+  .order-summary-row.grand { color: var(--text); font-weight: 600; font-size: 15px; border-top: 1px solid var(--border); margin-top: 6px; padding-top: 10px; }
+  .info-grid { display: grid; grid-template-columns: 120px 1fr; gap: 6px 14px; font-size: 13.5px; margin-bottom: 16px; }
+  .info-grid .lbl { color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; align-self: start; padding-top: 1px; }
+
+  /* Pagination */
+  .pagination { display: flex; align-items: center; gap: 6px; padding: 14px 18px; border-top: 1px solid var(--border); }
+  .pg-btn { padding: 5px 12px; border: 1px solid var(--border); border-radius: 6px; background: transparent; cursor: pointer; font-size: 13px; transition: all .2s; color: var(--text); }
+  .pg-btn:hover:not(:disabled) { border-color: var(--rose); color: var(--rose); }
+  .pg-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .pg-btn.active { background: var(--rose); border-color: var(--rose); color: #fff; }
+  .pg-info { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  /* Status select inline */
+  .status-select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; font-family: inherit; background: var(--bg); cursor: pointer; outline: none; }
+
+  /* Product image preview */
+  .prod-img-preview { width: 80px; height: 80px; border-radius: 10px; object-fit: cover; border: 1px solid var(--border); margin-bottom: 10px; background: var(--bg); }
+
+  /* Responsive adjustments */
+  @media (max-width: 900px) {
+    .kpi-grid { grid-template-columns: repeat(2,1fr); }
+    .sidebar { display: none; }
+    .main { padding: 20px 16px; }
+  }
+  @media (max-width: 600px) {
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+    .field-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── LOGIN SCREEN ── -->
+<div id="login-screen">
+  <div class="setup-card">
+    <div class="setup-logo">Minella</div>
+    <div class="setup-sub">Admin Panel — Sign in to continue</div>
+    <label>Email</label>
+    <input id="login-email" type="email" placeholder="you@example.com" autocomplete="email" />
+    <label>Password</label>
+    <input id="login-password" type="password" placeholder="••••••••" autocomplete="current-password"
+      onkeydown="if(event.key==='Enter')doLogin()" />
+    <div id="login-error" style="display:none;margin-top:12px;font-size:13px;color:var(--red);background:var(--red-bg);padding:9px 12px;border-radius:7px;"></div>
+    <button class="btn-primary" id="login-btn" onclick="doLogin()">Sign in</button>
+  </div>
+</div>
+
+<!-- ── MAIN APP ── -->
+<div id="app">
+  <header class="header">
+    <span class="header-logo">Minella</span>
+    <span class="header-divider"></span>
+    <span class="header-title">Admin</span>
+    <span class="header-spacer"></span>
+    <span class="header-badge" id="hdr-user">—</span>
+    <button class="btn-logout" onclick="doLogout()">Sign out</button>
+  </header>
+
+  <div class="body">
+    <nav class="sidebar">
+      <span class="sidebar-section">Overview</span>
+      <button class="nav-item active" onclick="navigate('dashboard')" id="nav-dashboard">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+        Dashboard
+      </button>
+      <span class="sidebar-section">Store</span>
+      <button class="nav-item" onclick="navigate('orders')" id="nav-orders">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
+        Orders
+        <span class="nav-count" id="nav-orders-count" style="display:none">0</span>
+      </button>
+      <button class="nav-item" onclick="navigate('products')" id="nav-products">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        Products
+      </button>
+    </nav>
+
+    <main class="main" id="main-content">
+      <div class="spinner"></div>
+    </main>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<!-- Firebase SDK -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getFirestore, collection, getDocs, doc, updateDoc, addDoc, deleteDoc,
+  query, orderBy, limit, where, Timestamp, getDoc
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import {
+  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+// ── STATE ──
+window._db   = null;
+window._auth = null;
+window._page = 'dashboard';
+window._allOrders = [];
+window._allProducts = [];
+window._orderPage = 1;
+window._productPage = 1;
+const PAGE_SIZE = 15;
+
+// ── FIREBASE INIT (hardcoded) ──
+const _app = initializeApp({
+  apiKey:            "AIzaSyAQzBIX9VXb1YMiFpkgzp9LEBkbRcAXOVY",
+  authDomain:        "minella-jewels.firebaseapp.com",
+  projectId:         "minella-jewels",
+  storageBucket:     "minella-jewels.firebasestorage.app",
+  messagingSenderId: "238642988235",
+  appId:             "1:238642988235:web:d45c27433805a9a2f1474e",
+});
+window._db   = getFirestore(_app);
+window._auth = getAuth(_app);
+
+// ── AUTH STATE LISTENER ──
+onAuthStateChanged(window._auth, (user) => {
+  if (user) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    document.getElementById('hdr-user').textContent = user.email;
+    navigate('dashboard');
+  } else {
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+  }
+});
+
+// ── LOGIN ──
+window.doLogin = async function() {
+  const email    = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl    = document.getElementById('login-error');
+  const btn      = document.getElementById('login-btn');
+  if (!email || !password) { errEl.textContent = 'Enter your email and password.'; errEl.style.display=''; return; }
+  errEl.style.display = 'none';
+  btn.textContent = 'Signing in…';
+  btn.disabled = true;
+  try {
+    await signInWithEmailAndPassword(window._auth, email, password);
+    // onAuthStateChanged handles the rest
+  } catch(e) {
+    const msg = e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found'
+      ? 'Invalid email or password.'
+      : e.code === 'auth/too-many-requests'
+      ? 'Too many attempts. Try again later.'
+      : e.message;
+    errEl.textContent = msg;
+    errEl.style.display = '';
+    btn.textContent = 'Sign in';
+    btn.disabled = false;
+  }
+};
+
+// ── LOGOUT ──
+window.doLogout = async function() {
+  if (!confirm('Sign out?')) return;
+  window._allOrders = [];
+  window._allProducts = [];
+  await signOut(window._auth);
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-password').value = '';
+};
+
+// ── NAVIGATION ──
+
+window.navigate = async function(page) {
+  window._page = page;
+  ['dashboard','orders','products'].forEach(p => {
+    document.getElementById('nav-'+p)?.classList.toggle('active', p === page);
+  });
+  const main = document.getElementById('main-content');
+  main.innerHTML = '<div class="spinner"></div>';
+  if (page === 'dashboard') await renderDashboard();
+  else if (page === 'orders') await renderOrders();
+  else if (page === 'products') await renderProducts();
+};
+
+// ── FIRESTORE HELPERS ──
+async function fetchOrders() {
+  const db = window._db;
+  const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+}
+async function fetchProducts() {
+  const db = window._db;
+  const snap = await getDocs(collection(db, 'products'));
+  return snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+}
+
+// ── DASHBOARD ──
+async function renderDashboard() {
+  try {
+    const [orders, products] = await Promise.all([fetchOrders(), fetchProducts()]);
+    window._allOrders = orders;
+    window._allProducts = products;
+
+    const totalRevenue = orders.filter(o => o.status === 'Order Placed').reduce((s,o) => s + (o.grandTotal||0), 0);
+    const pendingCount = orders.filter(o => o.status === 'Order Placed' && !o.shipped).length;
+    const lowStock = products.filter(p => (p.stocks||0) <= 3).length;
+    const newOrders = orders.filter(o => {
+      const d = o.createdAt?.toDate ? o.createdAt.toDate() : new Date(o.createdAt);
+      return Date.now() - d.getTime() < 86400000;
+    }).length;
+
+    // Update badge
+    const actionable = orders.filter(o => ['Order Placed','Awaiting Payment'].includes(o.status)).length;
+    const cnt = document.getElementById('nav-orders-count');
+    if (actionable > 0) { cnt.textContent = actionable; cnt.style.display=''; }
+
+    const recent = orders.slice(0,5);
+
+    document.getElementById('main-content').innerHTML = `
+      <div class="page-hdr">
+        <div><div class="page-title">Dashboard</div><div class="page-sub">Welcome back — here's your store at a glance</div></div>
+        <button class="btn-sm btn-outline" onclick="navigate('dashboard')">↺ Refresh</button>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card kpi-rose">
+          <div class="kpi-label">Total Revenue</div>
+          <div class="kpi-val">₹${totalRevenue.toLocaleString('en-IN')}</div>
+          <div class="kpi-sub">Paid orders only</div>
+        </div>
+        <div class="kpi-card kpi-gold">
+          <div class="kpi-label">Orders Today</div>
+          <div class="kpi-val">${newOrders}</div>
+          <div class="kpi-sub">Last 24 hours</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Pending Dispatch</div>
+          <div class="kpi-val">${pendingCount}</div>
+          <div class="kpi-sub">Placed, not yet shipped</div>
+        </div>
+        <div class="kpi-card kpi-green">
+          <div class="kpi-label">Products</div>
+          <div class="kpi-val">${products.length}</div>
+          <div class="kpi-sub">${lowStock} low / out of stock</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <span class="tbl-title">Recent Orders</span>
+          <span class="tbl-spacer"></span>
+          <button class="btn-sm btn-outline" onclick="navigate('orders')">View all →</button>
+        </div>
+        <table>
+          <thead><tr>
+            <th>Order ID</th><th>Customer</th><th>Amount</th><th>Method</th><th>Status</th><th>Date</th>
+          </tr></thead>
+          <tbody>${recent.map(o => `
+            <tr>
+              <td class="mono">${o.orderId||o._id}</td>
+              <td>${esc(o.name||'—')}</td>
+              <td>₹${(o.grandTotal||0).toLocaleString('en-IN')}</td>
+              <td>${o.paymentMethod==='Cash on Delivery'?'COD':'Online'}</td>
+              <td>${statusBadge(o.status)}</td>
+              <td>${fmtDate(o.createdAt)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        ${recent.length===0?'<div class="empty-state"><div class="big">📦</div><p>No orders yet</p></div>':''}
+      </div>
+    `;
+  } catch(e) {
+    document.getElementById('main-content').innerHTML = `<div class="empty-state"><p>Error loading: ${e.message}</p></div>`;
+  }
+}
+
+// ── ORDERS ──
+async function renderOrders(search='', statusFilter='all', page=1) {
+  try {
+    if (!window._allOrders.length) window._allOrders = await fetchOrders();
+    const orders = window._allOrders;
+
+    let filtered = orders.filter(o => {
+      const s = (search||'').toLowerCase();
+      const matchSearch = !s || (o.orderId||'').toLowerCase().includes(s) ||
+        (o.name||'').toLowerCase().includes(s) || (o.phone||'').includes(s) ||
+        (o.email||'').toLowerCase().includes(s);
+      const matchStatus = statusFilter==='all' || o.status===statusFilter;
+      return matchSearch && matchStatus;
+    });
+
+    const total = filtered.length;
+    const pages = Math.ceil(total/PAGE_SIZE);
+    const slice = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+
+    document.getElementById('main-content').innerHTML = `
+      <div class="page-hdr">
+        <div><div class="page-title">Orders</div><div class="page-sub">${total} order${total!==1?'s':''} found</div></div>
+        <button class="btn-sm btn-outline" onclick="window._allOrders=[];renderOrders()">↺ Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <span class="tbl-title">All Orders</span>
+          <span class="tbl-spacer"></span>
+          <div class="search-box">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input id="order-search" type="text" placeholder="Name, order ID, phone…" value="${esc(search)}" oninput="renderOrders(this.value,document.getElementById('order-status').value,1)" />
+          </div>
+          <select id="order-status" class="filter-select" onchange="renderOrders(document.getElementById('order-search').value,this.value,1)">
+            <option value="all" ${statusFilter==='all'?'selected':''}>All statuses</option>
+            <option value="Order Placed" ${statusFilter==='Order Placed'?'selected':''}>Order Placed</option>
+            <option value="Awaiting Payment" ${statusFilter==='Awaiting Payment'?'selected':''}>Awaiting Payment</option>
+            <option value="Shipped" ${statusFilter==='Shipped'?'selected':''}>Shipped</option>
+            <option value="Delivered" ${statusFilter==='Delivered'?'selected':''}>Delivered</option>
+            <option value="Cancelled" ${statusFilter==='Cancelled'?'selected':''}>Cancelled</option>
+            <option value="Payment Failed" ${statusFilter==='Payment Failed'?'selected':''}>Payment Failed</option>
+          </select>
+        </div>
+        <table>
+          <thead><tr>
+            <th>Order ID</th><th>Customer</th><th>Phone</th><th>Amount</th><th>Method</th><th>Status</th><th>Date</th><th></th>
+          </tr></thead>
+          <tbody>${slice.map(o => `
+            <tr>
+              <td class="mono">${o.orderId||o._id}</td>
+              <td><strong>${esc(o.name||'—')}</strong></td>
+              <td>${esc(o.phone||'—')}</td>
+              <td>₹${(o.grandTotal||0).toLocaleString('en-IN')}</td>
+              <td>${o.paymentMethod==='Cash on Delivery'?'COD':'Online'}</td>
+              <td>
+                <select class="status-select" onchange="updateOrderStatus('${o._id}',this.value,this)">
+                  ${['Order Placed','Awaiting Payment','Shipped','Delivered','Cancelled','Payment Failed'].map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}
+                </select>
+              </td>
+              <td>${fmtDate(o.createdAt)}</td>
+              <td class="td-actions">
+                <button class="icon-btn" title="View details" onclick="openOrderModal('${o._id}')">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        ${slice.length===0?'<div class="empty-state"><div class="big">🔍</div><p>No orders match your search</p></div>':''}
+        ${pages>1?`<div class="pagination">
+          <button class="pg-btn" ${page<=1?'disabled':''} onclick="renderOrders('${search}','${statusFilter}',${page-1})">← Prev</button>
+          ${Array.from({length:pages},(_,i)=>`<button class="pg-btn${i+1===page?' active':''}" onclick="renderOrders('${search}','${statusFilter}',${i+1})">${i+1}</button>`).join('')}
+          <button class="pg-btn" ${page>=pages?'disabled':''} onclick="renderOrders('${search}','${statusFilter}',${page+1})">Next →</button>
+          <span class="pg-info">Showing ${(page-1)*PAGE_SIZE+1}–${Math.min(page*PAGE_SIZE,total)} of ${total}</span>
+        </div>`:''}
+      </div>
+    `;
+  } catch(e) {
+    document.getElementById('main-content').innerHTML = `<div class="empty-state"><p>Error: ${e.message}</p></div>`;
+  }
+}
+
+window.updateOrderStatus = async function(docId, newStatus, selectEl) {
+  try {
+    await updateDoc(doc(window._db, 'orders', docId), { status: newStatus, updatedAt: Timestamp.now() });
+    // Update cache
+    const idx = window._allOrders.findIndex(o => o._id === docId);
+    if (idx > -1) window._allOrders[idx].status = newStatus;
+    showToast('Status updated to "' + newStatus + '"', 'success');
+  } catch(e) {
+    showToast('Update failed: ' + e.message, 'error');
+    selectEl.value = window._allOrders.find(o=>o._id===docId)?.status || '';
+  }
+};
+
+window.openOrderModal = function(docId) {
+  const o = window._allOrders.find(x => x._id === docId);
+  if (!o) return;
+  let items = [];
+  try { items = JSON.parse(o.cartData||'[]'); } catch {}
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Order ${o.orderId||o._id}</span>
+        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+      </div>
+      <div class="info-grid">
+        <span class="lbl">Customer</span><span>${esc(o.name||'—')}</span>
+        <span class="lbl">Phone</span><span>${esc(o.phone||'—')}</span>
+        <span class="lbl">Email</span><span>${esc(o.email||'—')}</span>
+        <span class="lbl">Address</span><span>${esc(o.address||'—')}</span>
+        <span class="lbl">Payment</span><span>${esc(o.paymentMethod||'—')}</span>
+        <span class="lbl">PayU TxnID</span><span class="mono" style="font-size:12px">${esc(o.txnid||'—')}</span>
+        <span class="lbl">Date</span><span>${fmtDate(o.createdAt)}</span>
+        <span class="lbl">Status</span><span>${statusBadge(o.status)}</span>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:4px 0 14px"/>
+      <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Items</div>
+      <ul class="order-items-list">
+        ${items.map(it=>`<li><span>${esc(it.title||'Item')} × ${it.qty}</span><span>₹${((it.price||0)*it.qty).toLocaleString('en-IN')}</span></li>`).join('')}
+        ${items.length===0?`<li>${esc(o.items||'—')}</li>`:''}
+      </ul>
+      <div style="margin-top:12px">
+        <div class="order-summary-row"><span>Subtotal</span><span>₹${(o.subtotal||0).toLocaleString('en-IN')}</span></div>
+        <div class="order-summary-row"><span>Shipping</span><span>${o.shipping?'₹'+o.shipping.toLocaleString('en-IN'):'Free'}</span></div>
+        ${o.codCharge?`<div class="order-summary-row"><span>COD Charge</span><span>₹${o.codCharge.toLocaleString('en-IN')}</span></div>`:''}
+        <div class="order-summary-row grand"><span>Grand Total</span><span>₹${(o.grandTotal||0).toLocaleString('en-IN')}</span></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-sm btn-outline" onclick="this.closest('.modal-overlay').remove()">Close</button>
+      </div>
+    </div>
+  `;
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+};
+
+// ── PRODUCTS ──
+async function renderProducts(search='', catFilter='all') {
+  try {
+    if (!window._allProducts.length) window._allProducts = await fetchProducts();
+    const products = window._allProducts;
+    const cats = [...new Set(products.map(p=>(p.category||'other').toLowerCase()))].sort();
+
+    let filtered = products.filter(p => {
+      const s = (search||'').toLowerCase();
+      const matchSearch = !s || (p.title||'').toLowerCase().includes(s) || (p.category||'').toLowerCase().includes(s);
+      const matchCat = catFilter==='all' || (p.category||'other').toLowerCase()===catFilter;
+      return matchSearch && matchCat;
+    });
+
+    document.getElementById('main-content').innerHTML = `
+      <div class="page-hdr">
+        <div><div class="page-title">Products</div><div class="page-sub">${filtered.length} of ${products.length} shown</div></div>
+        <div style="display:flex;gap:10px">
+          <button class="btn-sm btn-outline" onclick="window._allProducts=[];renderProducts()">↺ Refresh</button>
+          <button class="btn-sm btn-rose" onclick="openProductModal()">+ Add Product</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <span class="tbl-title">Inventory</span>
+          <span class="tbl-spacer"></span>
+          <div class="search-box">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input id="prod-search" type="text" placeholder="Search products…" value="${esc(search)}" oninput="renderProducts(this.value,document.getElementById('prod-cat').value)" />
+          </div>
+          <select id="prod-cat" class="filter-select" onchange="renderProducts(document.getElementById('prod-search').value,this.value)">
+            <option value="all">All categories</option>
+            ${cats.map(c=>`<option value="${c}" ${catFilter===c?'selected':''}>${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('')}
+          </select>
+        </div>
+        <table>
+          <thead><tr>
+            <th>Product</th><th>Category</th><th>Price</th><th>MRP</th><th>Stock</th><th>Status</th><th></th>
+          </tr></thead>
+          <tbody>${filtered.map(p => {
+            const stock = p.stocks||0;
+            const sts = stock<=0?'out':stock<=3?'limited':'available';
+            return `<tr>
+              <td>
+                <div class="prod-info">
+                  <img class="prod-thumb" src="${driveThumb(p.image_link||p.image_thumb||'')}" alt="" onerror="this.style.display='none'" />
+                  <div>
+                    <div class="prod-name">${esc(p.title||'Untitled')}</div>
+                    <div class="prod-cat">${esc(p.id||p._id)}</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="badge badge-muted">${esc((p.category||'other'))}</span></td>
+              <td>₹${(p.price||0).toLocaleString('en-IN')}</td>
+              <td style="text-decoration:line-through;color:var(--muted)">₹${(p.without_offer||0).toLocaleString('en-IN')}</td>
+              <td>
+                <div class="stock-edit">
+                  <button class="stock-btn" onclick="changeStock('${p._id}',-1)">−</button>
+                  <span class="stock-num" id="stock-${p._id}">${stock}</span>
+                  <button class="stock-btn" onclick="changeStock('${p._id}',1)">+</button>
+                  <button class="icon-btn" title="Edit stock" onclick="editStockInline('${p._id}')">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                </div>
+              </td>
+              <td>${sts==='out'?'<span class="badge badge-red">Out of stock</span>':sts==='limited'?'<span class="badge badge-amber">Low stock</span>':'<span class="badge badge-green">In stock</span>'}</td>
+              <td class="td-actions">
+                <button class="icon-btn" title="Edit product" onclick="openProductModal('${p._id}')">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button class="icon-btn danger" title="Delete product" onclick="deleteProduct('${p._id}','${esc(p.title||'this product')}')">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                </button>
+              </td>
+            </tr>`;
+          }).join('')}
+          </tbody>
+        </table>
+        ${filtered.length===0?'<div class="empty-state"><div class="big">🏷️</div><p>No products match your search</p></div>':''}
+      </div>
+    `;
+  } catch(e) {
+    document.getElementById('main-content').innerHTML = `<div class="empty-state"><p>Error: ${e.message}</p></div>`;
+  }
+}
+
+window.changeStock = async function(docId, delta) {
+  const p = window._allProducts.find(x=>x._id===docId);
+  if (!p) return;
+  const newStock = Math.max(0, (p.stocks||0)+delta);
+  try {
+    await updateDoc(doc(window._db,'products',docId), { stocks: newStock });
+    p.stocks = newStock;
+    const el = document.getElementById('stock-'+docId);
+    if (el) el.textContent = newStock;
+    showToast('Stock updated', 'success');
+  } catch(e) { showToast('Failed: '+e.message,'error'); }
+};
+
+window.editStockInline = function(docId) {
+  const p = window._allProducts.find(x=>x._id===docId);
+  if (!p) return;
+  const el = document.getElementById('stock-'+docId);
+  if (!el) return;
+  const cur = p.stocks||0;
+  el.outerHTML = `<input class="stock-input" id="stock-inp-${docId}" type="number" min="0" value="${cur}" onblur="commitStock('${docId}',this)" onkeydown="if(event.key==='Enter')this.blur()" />`;
+  document.getElementById('stock-inp-'+docId)?.focus();
+};
+
+window.commitStock = async function(docId, inp) {
+  const val = Math.max(0, parseInt(inp.value)||0);
+  const p = window._allProducts.find(x=>x._id===docId);
+  if (!p) return;
+  inp.outerHTML = `<span class="stock-num" id="stock-${docId}">${val}</span>`;
+  if (val === p.stocks) return;
+  try {
+    await updateDoc(doc(window._db,'products',docId),{stocks:val});
+    p.stocks = val;
+    showToast('Stock set to '+val,'success');
+  } catch(e) { showToast('Failed: '+e.message,'error'); }
+};
+
+window.deleteProduct = async function(docId, title) {
+  if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+  try {
+    await deleteDoc(doc(window._db,'products',docId));
+    window._allProducts = window._allProducts.filter(p=>p._id!==docId);
+    showToast('Product deleted','info');
+    renderProducts();
+  } catch(e) { showToast('Delete failed: '+e.message,'error'); }
+};
+
+window.openProductModal = function(docId) {
+  const p = docId ? window._allProducts.find(x=>x._id===docId) : null;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">${p?'Edit Product':'Add Product'}</span>
+        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+      </div>
+      ${p&&p.image_link?`<img class="prod-img-preview" src="${driveThumb(p.image_link)}" alt=""/>`:'' }
+      <div class="field-group"><label>Product ID</label>
+        <input id="pf-id" type="text" value="${esc(p?.id||p?._id||'')}" placeholder="e.g. earring-001" ${p?'readonly':''}/>
+      </div>
+      <div class="field-group"><label>Title</label>
+        <input id="pf-title" type="text" value="${esc(p?.title||'')}" placeholder="Product name" />
+      </div>
+      <div class="field-group"><label>Description</label>
+        <textarea id="pf-desc" rows="3" placeholder="Short description…">${esc(p?.description||'')}</textarea>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><label>Price (₹)</label>
+          <input id="pf-price" type="number" value="${p?.price||''}" />
+        </div>
+        <div class="field-group"><label>MRP / Without Offer (₹)</label>
+          <input id="pf-mrp" type="number" value="${p?.without_offer||''}" />
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><label>Stock</label>
+          <input id="pf-stock" type="number" min="0" value="${p?.stocks||0}" />
+        </div>
+        <div class="field-group"><label>Category</label>
+          <input id="pf-cat" type="text" value="${esc(p?.category||'')}" placeholder="earring / necklace…" />
+        </div>
+      </div>
+      <div class="field-group"><label>Image Link (Google Drive URL)</label>
+        <input id="pf-img" type="text" value="${esc(p?.image_link||'')}" placeholder="https://drive.google.com/file/d/…" />
+      </div>
+      <div class="field-group"><label>Additional Images (comma-separated)</label>
+        <input id="pf-addimg" type="text" value="${esc(p?.additional_images||'')}" />
+      </div>
+      <div class="field-group"><label>Video Link</label>
+        <input id="pf-video" type="text" value="${esc(p?.video_link||'')}" />
+      </div>
+      <div class="field-group"><label>Details</label>
+        <textarea id="pf-details" rows="2" placeholder="Material, weight, etc.">${esc(p?.details||'')}</textarea>
+      </div>
+      <div class="field-group"><label>Quote</label>
+        <input id="pf-quote" type="text" value="${esc(p?.quote||'')}" placeholder="Wear it like a crown…" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn-sm btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+        <button class="btn-sm btn-rose" onclick="saveProduct('${docId||''}',this.closest('.modal-overlay'))">
+          ${p?'Save Changes':'Add Product'}
+        </button>
+      </div>
+    </div>
+  `;
+  overlay.addEventListener('click', e => { if (e.target===overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+};
+
+window.saveProduct = async function(docId, overlay) {
+  const val = id => document.getElementById(id)?.value?.trim();
+  const data = {
+    title: val('pf-title'),
+    description: val('pf-desc'),
+    price: parseFloat(val('pf-price'))||0,
+    without_offer: parseFloat(val('pf-mrp'))||0,
+    stocks: parseInt(val('pf-stock'))||0,
+    category: val('pf-cat'),
+    image_link: val('pf-img'),
+    additional_images: val('pf-addimg'),
+    video_link: val('pf-video'),
+    details: val('pf-details'),
+    quote: val('pf-quote'),
+  };
+  if (!data.title) { showToast('Title is required','error'); return; }
+  try {
+    if (docId) {
+      await updateDoc(doc(window._db,'products',docId), data);
+      const idx = window._allProducts.findIndex(p=>p._id===docId);
+      if (idx>-1) window._allProducts[idx] = { ...window._allProducts[idx], ...data };
+      showToast('Product updated','success');
+    } else {
+      const pid = val('pf-id') || data.title.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+      data.id = pid;
+      const ref = await addDoc(collection(window._db,'products'), data);
+      window._allProducts.push({ _id: ref.id, ...data });
+      showToast('Product added','success');
+    }
+    overlay.remove();
+    renderProducts();
+  } catch(e) { showToast('Save failed: '+e.message,'error'); }
+};
+
+// ── UTILS ──
+function driveThumb(url, w=80) {
+  if (!url?.trim()) return '';
+  const m = url.match(/\/file\/d\/([^\/\?&]+)/) || url.match(/[?&]id=([^&]+)/) || url.match(/\/d\/([^\/\s,]+)/);
+  return m ? `https://lh3.googleusercontent.com/d/${m[1]}=w${w}` : url;
+}
+function fmtDate(ts) {
+  if (!ts) return '—';
+  let d;
+  if (ts?.toDate) d = ts.toDate();
+  else if (ts?.seconds) d = new Date(ts.seconds*1000);
+  else d = new Date(ts);
+  return d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) + ' ' +
+    d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+}
+function statusBadge(s) {
+  const map = {
+    'Order Placed':'badge-green','Shipped':'badge-blue','Delivered':'badge-blue',
+    'Awaiting Payment':'badge-amber','Payment Failed':'badge-red','Cancelled':'badge-red',
+  };
+  return `<span class="badge ${map[s]||'badge-muted'}">${s||'Unknown'}</span>`;
+}
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+window.showToast = function(msg, type='success') {
+  const wrap = document.getElementById('toast-wrap');
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.innerHTML = (type==='success'?'✓':type==='error'?'✕':'ℹ') + ` ${msg}`;
+  wrap.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+};
+
+// Auth state listener above handles init — nothing else needed here.
+</script>
+</body>
+</html>
