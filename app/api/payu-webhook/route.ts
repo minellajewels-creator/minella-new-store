@@ -6,6 +6,23 @@ const STORE_URL = process.env.NEXT_PUBLIC_STORE_URL || "https://minella.in";
 const PAYU_SALT = process.env.PAYU_SALT || "";
 const GAS_URL = process.env.GAS_URL || "";
 
+// ── Helper: return HTML that immediately navigates to a URL ──
+// This replaces NextResponse.redirect() everywhere.
+// PayU POSTs to surl/furl and expects a full HTML page back —
+// a 302 redirect causes the browser to drop the POST body and
+// the page either hangs or shows an error until the user hits Enter.
+function htmlRedirect(url: string): NextResponse {
+  const safe = url.replace(/"/g, "&quot;");
+  return new NextResponse(
+    `<!DOCTYPE html><html><head>
+      <meta http-equiv="refresh" content="0;url=${safe}">
+    </head><body>
+      <script>window.location.replace("${safe}");<\/script>
+    </body></html>`,
+    { status: 200, headers: { "Content-Type": "text/html" } },
+  );
+}
+
 function verifyReverseHash(params: Record<string, string>): {
   valid: boolean;
   expected: string;
@@ -93,7 +110,6 @@ export async function POST(req: NextRequest) {
         received: hashResult.received,
       });
 
-      // Store the mismatch in Firestore for debugging
       try {
         await db.collection("payu_logs").add({
           type: "hash_mismatch",
@@ -108,9 +124,8 @@ export async function POST(req: NextRequest) {
         });
       } catch (_) {}
 
-      return NextResponse.redirect(
-        new URL(`/success?method=failed&txnid=${txnid}`, STORE_URL),
-      );
+      // ❌ FAILURE — hash mismatch
+      return htmlRedirect(`${STORE_URL}/success?method=failed&txnid=${txnid}`);
     }
 
     // ── Hash valid — log it for audit trail ──
@@ -138,8 +153,9 @@ export async function POST(req: NextRequest) {
 
       // Idempotency — don't process twice
       if (orderData.status === "Order Placed") {
-        return NextResponse.redirect(
-          new URL(`/success?method=online&txnid=${txnid}`, STORE_URL),
+        // ✅ SUCCESS — already processed
+        return htmlRedirect(
+          `${STORE_URL}/success?method=online&txnid=${txnid}`,
         );
       }
 
@@ -151,10 +167,8 @@ export async function POST(req: NextRequest) {
           updatedAt: new Date(),
         });
 
-        // Deduct stock only now — payment confirmed
         await decrementStock(db, orderData.cartData || "[]");
 
-        // GAS sends confirmation email
         if (GAS_URL) {
           fetch(GAS_URL, {
             method: "POST",
@@ -174,31 +188,33 @@ export async function POST(req: NextRequest) {
           }).catch(() => {});
         }
 
-        return NextResponse.redirect(
-          new URL(`/success?method=online&txnid=${txnid}`, STORE_URL),
+        // ✅ SUCCESS — payment confirmed
+        return htmlRedirect(
+          `${STORE_URL}/success?method=online&txnid=${txnid}`,
         );
       } else {
-        // Payment failed/cancelled
         await orderRef.update({
           status: "Payment Failed",
           payuHashVerified: true,
           updatedAt: new Date(),
         });
-        return NextResponse.redirect(
-          new URL(`/success?method=failed&txnid=${txnid}`, STORE_URL),
+
+        // ❌ FAILURE — payment failed/cancelled by user
+        return htmlRedirect(
+          `${STORE_URL}/success?method=failed&txnid=${txnid}`,
         );
       }
     }
 
-    return NextResponse.redirect(
-      new URL(
-        `/success?method=${payStatus === "success" ? "online" : "failed"}&txnid=${txnid}`,
-        STORE_URL,
-      ),
+    // ── Order not found in Firestore ──
+    // ✅ or ❌ depending on PayU status
+    return htmlRedirect(
+      `${STORE_URL}/success?method=${payStatus === "success" ? "online" : "failed"}&txnid=${txnid}`,
     );
   } catch (e: any) {
     console.error("payu-webhook error:", e);
-    return NextResponse.redirect(new URL("/success?method=failed", STORE_URL));
+    // ❌ FAILURE — unexpected server error
+    return htmlRedirect(`${STORE_URL}/success?method=failed`);
   }
 }
 
@@ -206,10 +222,8 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const txnid = searchParams.get("txnid") || "";
-  return NextResponse.redirect(
-    new URL(
-      `/success?method=failed${txnid ? "&txnid=" + txnid : ""}`,
-      STORE_URL,
-    ),
+  // ❌ FAILURE — user cancelled via back button
+  return htmlRedirect(
+    `${STORE_URL}/success?method=failed${txnid ? "&txnid=" + txnid : ""}`,
   );
 }
