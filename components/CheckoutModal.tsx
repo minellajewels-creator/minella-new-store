@@ -9,14 +9,7 @@ interface Props {
   onClose: () => void;
 }
 
-type PayMethod =
-  | "upi"
-  | "card"
-  | "netbanking"
-  | "wallet"
-  | "emi"
-  | "cod"
-  | null;
+type PayMethod = "online" | "cod" | null;
 
 export default function CheckoutModal({ open, onClose }: Props) {
   const { items, subtotal, count, clear } = useCart();
@@ -53,7 +46,8 @@ export default function CheckoutModal({ open, onClose }: Props) {
   function validateDelivery() {
     const errs: Record<string, string> = {};
     if (form.name.trim().length < 2) errs.name = "Please enter your full name";
-    if (!/^\d{10}$/.test(form.phone.trim()))
+    const rawPhone = form.phone.trim().replace(/^(\+91|91)/, "");
+    if (!/^\d{10}$/.test(rawPhone))
       errs.phone = "Enter a valid 10-digit number";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
       errs.email = "Enter a valid email address";
@@ -100,9 +94,10 @@ export default function CheckoutModal({ open, onClose }: Props) {
       qty: i.qty,
       price: i.price,
     }));
+    const cleanPhone = form.phone.trim().replace(/^(\+91|91)/, "");
     const payload = {
       name: form.name.trim(),
-      phone: form.phone.trim(),
+      phone: cleanPhone,
       email: form.email.trim(),
       address: fullAddress,
       items: itemsSummary,
@@ -110,7 +105,8 @@ export default function CheckoutModal({ open, onClose }: Props) {
       shipping: shipping?.cost ?? 0,
       codCharge,
       grandTotal: grand,
-      paymentMethod: selectedPay === "cod" ? "Cash on Delivery" : selectedPay,
+      paymentMethod:
+        selectedPay === "cod" ? "Cash on Delivery" : "Online Payment",
       cartData: cartArr,
       pincode: form.pin.trim(), // ← ADDED
     };
@@ -382,53 +378,25 @@ export default function CheckoutModal({ open, onClose }: Props) {
             {/* Step 3: Payment */}
             {step === 3 && (
               <div className="co-section active">
-                <div className="co-sec-title">Payment Method</div>
-                <div className="pay-sec-label">Pay Online</div>
-                <div className="pay-methods-grid">
-                  {[
-                    {
-                      key: "upi",
-                      icon: "📱",
-                      label: "UPI",
-                      sub: "GPay, PhonePe, Paytm",
-                    },
-                    {
-                      key: "card",
-                      icon: "💳",
-                      label: "Credit / Debit Card",
-                      sub: "Visa, Mastercard, RuPay",
-                    },
-                    {
-                      key: "netbanking",
-                      icon: "🏦",
-                      label: "Net Banking",
-                      sub: "All major banks",
-                    },
-                    {
-                      key: "wallet",
-                      icon: "👛",
-                      label: "Wallets",
-                      sub: "Paytm, Mobikwik, Airtel",
-                    },
-                    {
-                      key: "emi",
-                      icon: "📅",
-                      label: "EMI",
-                      sub: "Credit card EMI",
-                    },
-                  ].map((m) => (
-                    <div
-                      key={m.key}
-                      className={`pay-method-card${selectedPay === m.key ? " selected" : ""}`}
-                      onClick={() => setSelectedPay(m.key as PayMethod)}
-                    >
-                      <div className="pay-method-icon">{m.icon}</div>
-                      <div className="pay-method-label">{m.label}</div>
-                      <div className="pay-method-sub">{m.sub}</div>
+                <div className="co-sec-title">How would you like to pay?</div>
+
+                {/* Online Payment card */}
+                <div
+                  className={`cod-card${selectedPay === "online" ? " selected" : ""}`}
+                  onClick={() => setSelectedPay("online")}
+                  style={{ marginBottom: 12 }}
+                >
+                  <div className="cod-card-icon">💳</div>
+                  <div>
+                    <div className="cod-card-label">Pay Online</div>
+                    <div className="cod-card-sub">
+                      UPI, Cards, Net Banking, Wallets &amp; EMI — all handled
+                      securely via PayU
                     </div>
-                  ))}
+                  </div>
                 </div>
-                <div className="pay-divider">or</div>
+
+                {/* COD card */}
                 <div
                   className={`cod-card${selectedPay === "cod" ? " selected" : ""}`}
                   onClick={() => setSelectedPay("cod")}
@@ -482,7 +450,7 @@ export default function CheckoutModal({ open, onClose }: Props) {
                     higher) added.
                   </div>
                 )}
-                {selectedPay && selectedPay !== "cod" && (
+                {selectedPay === "online" && (
                   <div
                     style={{
                       fontSize: 12,
@@ -490,7 +458,8 @@ export default function CheckoutModal({ open, onClose }: Props) {
                       marginTop: 8,
                     }}
                   >
-                    You'll be redirected to PayU's secure page to pay.
+                    You'll be redirected to PayU's secure payment page. All
+                    methods available there.
                   </div>
                 )}
               </div>

@@ -6,7 +6,12 @@ const STORE_URL = process.env.NEXT_PUBLIC_STORE_URL || "https://minella.in";
 const PAYU_SALT = process.env.PAYU_SALT || "";
 const GAS_URL = process.env.GAS_URL || "";
 
-function verifyReverseHash(params: Record<string, string>): boolean {
+function verifyReverseHash(params: Record<string, string>): {
+  valid: boolean;
+  expected: string;
+  received: string;
+  hashStr: string;
+} {
   const {
     hash,
     key,
@@ -22,9 +27,18 @@ function verifyReverseHash(params: Record<string, string>): boolean {
     udf5 = "",
     status,
   } = params;
+
+  // Official PayU reverse hash:
+  // salt|status|udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key
   const hashStr = `${PAYU_SALT}|${status}|${udf5}|${udf4}|${udf3}|${udf2}|${udf1}|${email}|${firstname}|${productinfo}|${amount}|${txnid}|${key}`;
   const expected = crypto.createHash("sha512").update(hashStr).digest("hex");
-  return expected === hash;
+
+  return {
+    valid: expected === hash,
+    expected,
+    received: hash || "",
+    hashStr,
+  };
 }
 
 async function decrementStock(
@@ -68,14 +82,50 @@ export async function POST(req: NextRequest) {
     const { txnid, mihpayid, status } = params;
     const payStatus = (status || "").toLowerCase();
 
-    if (!verifyReverseHash(params)) {
-      console.error("PayU hash mismatch for txnid:", txnid);
+    // ── Verify hash and store result for audit ──
+    const hashResult = verifyReverseHash(params);
+
+    const db = getAdminDb();
+
+    if (!hashResult.valid) {
+      console.error("PayU hash mismatch for txnid:", txnid, {
+        expected: hashResult.expected,
+        received: hashResult.received,
+      });
+
+      // Store the mismatch in Firestore for debugging
+      try {
+        await db.collection("payu_logs").add({
+          type: "hash_mismatch",
+          txnid,
+          status: payStatus,
+          mihpayid: mihpayid || "",
+          receivedHash: hashResult.received,
+          expectedHash: hashResult.expected,
+          hashStr: hashResult.hashStr,
+          allParams: params,
+          createdAt: new Date(),
+        });
+      } catch (_) {}
+
       return NextResponse.redirect(
         new URL(`/success?method=failed&txnid=${txnid}`, STORE_URL),
       );
     }
 
-    const db = getAdminDb();
+    // ── Hash valid — log it for audit trail ──
+    try {
+      await db.collection("payu_logs").add({
+        type: "webhook_received",
+        txnid,
+        status: payStatus,
+        mihpayid: mihpayid || "",
+        receivedHash: hashResult.received,
+        expectedHash: hashResult.expected,
+        createdAt: new Date(),
+      });
+    } catch (_) {}
+
     const snap = await db
       .collection("orders")
       .where("txnid", "==", txnid)
@@ -97,6 +147,7 @@ export async function POST(req: NextRequest) {
         await orderRef.update({
           status: "Order Placed",
           mihpayid,
+          payuHashVerified: true,
           updatedAt: new Date(),
         });
 
@@ -127,9 +178,10 @@ export async function POST(req: NextRequest) {
           new URL(`/success?method=online&txnid=${txnid}`, STORE_URL),
         );
       } else {
-        // Payment failed/cancelled — restore stock is NOT needed since we never deducted it
+        // Payment failed/cancelled
         await orderRef.update({
           status: "Payment Failed",
+          payuHashVerified: true,
           updatedAt: new Date(),
         });
         return NextResponse.redirect(
@@ -150,6 +202,14 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// GET handles PayU cancel (user presses Back on PayU page — PayU GETs furl)
 export async function GET(req: NextRequest) {
-  return NextResponse.redirect(new URL("/", STORE_URL));
+  const { searchParams } = new URL(req.url);
+  const txnid = searchParams.get("txnid") || "";
+  return NextResponse.redirect(
+    new URL(
+      `/success?method=failed${txnid ? "&txnid=" + txnid : ""}`,
+      STORE_URL,
+    ),
+  );
 }
