@@ -27,8 +27,18 @@ async function getProduct(id: string): Promise<Product | null> {
     const db = getAdminDb();
     const doc = await db.collection("products").doc(id).get();
     if (!doc.exists) return null;
-    return { id: doc.id, ...doc.data() } as Product;
-  } catch {
+    const data = doc.data()!;
+    // Sanitize: only keep plain scalar values
+    const plain: Record<string, unknown> = { id: doc.id };
+    for (const [k, v] of Object.entries(data)) {
+      if (v === null || v === undefined) { plain[k] = ""; continue; }
+      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        plain[k] = v;
+      }
+    }
+    return plain as unknown as Product;
+  } catch (err) {
+    console.error("[product page] getProduct error:", err);
     return null;
   }
 }
@@ -45,7 +55,15 @@ async function getRelated(
       .limit(9)
       .get();
     return snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }) as Product)
+      .map((d) => {
+        const data = d.data();
+        const plain: Record<string, unknown> = { id: d.id };
+        for (const [k, v] of Object.entries(data)) {
+          if (v === null || v === undefined) { plain[k] = ""; continue; }
+          if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") plain[k] = v;
+        }
+        return plain as unknown as Product;
+      })
       .filter((p) => p.id !== currentId)
       .slice(0, 8);
   } catch {
@@ -58,20 +76,24 @@ export async function generateMetadata({
 }: {
   params: { id: string };
 }): Promise<Metadata> {
-  const p = await getProduct(params.id);
-  if (!p) return { title: "Product Not Found | Minella Jewels" };
-  const img = driveThumb(p.image_link, 800);
-  return {
-    title: `${p.title} | Anti-Tarnish Jewellery | Minella Jewels India`,
-    description:
-      p.description ||
-      `Buy ${p.title} online — anti-tarnish, waterproof, 18K gold plated. Skin-safe, nickel-free. Cash on delivery across India.`,
-    openGraph: {
-      title: `${p.title} | Minella Jewels`,
-      images: [{ url: img, width: 800, height: 800 }],
-      type: "website",
-    },
-  };
+  try {
+    const p = await getProduct(params.id);
+    if (!p) return { title: "Product Not Found | Minella Jewels" };
+    const img = driveThumb(p.image_link, 800);
+    return {
+      title: `${p.title} | Anti-Tarnish Jewellery | Minella Jewels India`,
+      description:
+        p.description ||
+        `Buy ${p.title} online — anti-tarnish, waterproof, 18K gold plated. Skin-safe, nickel-free. Cash on delivery across India.`,
+      openGraph: {
+        title: `${p.title} | Minella Jewels`,
+        images: [{ url: img, width: 800, height: 800 }],
+        type: "website",
+      },
+    };
+  } catch {
+    return { title: "Minella Jewels" };
+  }
 }
 
 export default async function ProductPage({
@@ -79,16 +101,32 @@ export default async function ProductPage({
 }: {
   params: { id: string };
 }) {
-  const p = await getProduct(params.id);
+  let p: Product | null = null;
+  try {
+    p = await getProduct(params.id);
+  } catch (err) {
+    console.error("[product page] top-level fetch error:", err);
+  }
+
   if (!p) notFound();
 
   const category = getProductCategory(p);
   const catLabel = categoryLabel(category);
   const related = await getRelated(category, p.id);
 
-  const mainImg = driveThumb(p.image_link, 800);
+  // Build image list — support both Cloudinary URLs and Google Drive links
+  function buildImgUrl(rawUrl: string, width = 800): string {
+    if (!rawUrl?.trim()) return "";
+    const url = rawUrl.trim();
+    // Cloudinary URLs — pass through directly
+    if (url.includes("cloudinary.com") || url.startsWith("https://res.cloudinary")) return url;
+    // Google Drive — use lh3 thumb
+    return driveThumb(url, width);
+  }
+
+  const mainImg = buildImgUrl(p.image_link, 800);
   const addlImgs = getAdditionalImgs(p.additional_images).map((u) =>
-    driveThumb(u, 800),
+    buildImgUrl(u, 800),
   );
   const allImgs = [mainImg, ...addlImgs].filter(Boolean);
   const videoRaw = (p.video_link || "").trim();
