@@ -31,8 +31,15 @@ async function getProduct(id: string): Promise<Product | null> {
     // Sanitize: only keep plain scalar values
     const plain: Record<string, unknown> = { id: doc.id };
     for (const [k, v] of Object.entries(data)) {
-      if (v === null || v === undefined) { plain[k] = ""; continue; }
-      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      if (v === null || v === undefined) {
+        plain[k] = "";
+        continue;
+      }
+      if (
+        typeof v === "string" ||
+        typeof v === "number" ||
+        typeof v === "boolean"
+      ) {
         plain[k] = v;
       }
     }
@@ -59,8 +66,16 @@ async function getRelated(
         const data = d.data();
         const plain: Record<string, unknown> = { id: d.id };
         for (const [k, v] of Object.entries(data)) {
-          if (v === null || v === undefined) { plain[k] = ""; continue; }
-          if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") plain[k] = v;
+          if (v === null || v === undefined) {
+            plain[k] = "";
+            continue;
+          }
+          if (
+            typeof v === "string" ||
+            typeof v === "number" ||
+            typeof v === "boolean"
+          )
+            plain[k] = v;
         }
         return plain as unknown as Product;
       })
@@ -85,6 +100,9 @@ export async function generateMetadata({
       description:
         p.description ||
         `Buy ${p.title} online — anti-tarnish, waterproof, 18K gold plated. Skin-safe, nickel-free. Cash on delivery across India.`,
+      alternates: {
+        canonical: `${STORE_URL}/product/${params.id}`,
+      },
       openGraph: {
         title: `${p.title} | Minella Jewels`,
         images: [{ url: img, width: 800, height: 800 }],
@@ -119,7 +137,11 @@ export default async function ProductPage({
     if (!rawUrl?.trim()) return "";
     const url = rawUrl.trim();
     // Cloudinary URLs — pass through directly
-    if (url.includes("cloudinary.com") || url.startsWith("https://res.cloudinary")) return url;
+    if (
+      url.includes("cloudinary.com") ||
+      url.startsWith("https://res.cloudinary")
+    )
+      return url;
     // Google Drive — use lh3 thumb
     return driveThumb(url, width);
   }

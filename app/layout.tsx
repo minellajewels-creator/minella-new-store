@@ -12,6 +12,9 @@ export const metadata: Metadata = {
     "anti tarnish jewellery, waterproof jewellery, minimalist jewellery India, gold plated jewellery, nickel free jewellery, anti tarnish necklace, COD jewellery India",
   authors: [{ name: "Minella Jewels" }],
   metadataBase: new URL(STORE_URL),
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
     title: "Minella Jewels — Anti-Tarnish Jewellery | India",
     description:
