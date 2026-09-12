@@ -57,7 +57,8 @@ export async function POST(req: NextRequest) {
     const verifiedCodCharge = isCod
       ? Math.max(40, Math.round(verifiedSubtotal * 0.02))
       : 0;
-    const verifiedGrand = verifiedSubtotal + verifiedShipping + verifiedCodCharge;
+    const verifiedGrand =
+      verifiedSubtotal + verifiedShipping + verifiedCodCharge;
 
     // Write order to Firestore
     await db.collection("orders").add({
@@ -73,7 +74,8 @@ export async function POST(req: NextRequest) {
       codCharge: verifiedCodCharge,
       grandTotal: verifiedGrand,
       paymentMethod,
-      cartData: typeof cartData === "string" ? cartData : JSON.stringify(cartData),
+      cartData:
+        typeof cartData === "string" ? cartData : JSON.stringify(cartData),
       status: isCod ? "Order Placed" : "Awaiting Payment",
       createdAt: new Date(),
     });
@@ -97,13 +99,20 @@ export async function POST(req: NextRequest) {
           headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({
             action: "sendCodEmail",
-            orderId, txnid, name, phone, email, address, items,
+            orderId,
+            txnid,
+            name,
+            phone,
+            email,
+            address,
+            items,
             subtotal: verifiedSubtotal,
             shipping: verifiedShipping,
             codCharge: verifiedCodCharge,
             grandTotal: verifiedGrand,
             paymentMethod,
           }),
+          redirect: "follow",
         }).catch(() => {});
       }
 
@@ -136,7 +145,9 @@ export async function POST(req: NextRequest) {
 
     if (!rzpRes.ok) {
       const err = await rzpRes.json();
-      throw new Error(err?.error?.description || "Razorpay order creation failed");
+      throw new Error(
+        err?.error?.description || "Razorpay order creation failed",
+      );
     }
 
     const rzpOrder = await rzpRes.json();
@@ -146,7 +157,7 @@ export async function POST(req: NextRequest) {
       orderId,
       txnid,
       razorpayOrderId: rzpOrder.id,
-      amount: rzpOrder.amount,      // paise
+      amount: rzpOrder.amount, // paise
       currency: rzpOrder.currency,
       name,
       phone,

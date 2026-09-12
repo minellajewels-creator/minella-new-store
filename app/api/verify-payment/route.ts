@@ -106,6 +106,7 @@ export async function POST(req: NextRequest) {
           grandTotal: orderData.grandTotal,
           paymentMethod: orderData.paymentMethod,
         }),
+        redirect: "follow",
       }).catch(() => {});
     }
 
