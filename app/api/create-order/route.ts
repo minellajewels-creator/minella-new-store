@@ -1,35 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
-import crypto from "crypto";
 
-const STORE_URL = process.env.NEXT_PUBLIC_STORE_URL || "https://minella.in";
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "";
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
 const GAS_URL = process.env.GAS_URL || "";
-const PAYU_KEY = process.env.PAYU_KEY || "";
-const PAYU_SALT = process.env.PAYU_SALT || "";
-const PAYU_URL =
-  process.env.NEXT_PUBLIC_PAYU_URL || "https://secure.payu.in/_payment";
 
 function generateOrderId() {
   const now = new Date();
   const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
   const rand = Math.floor(Math.random() * 9000) + 1000;
   return `MNL-${date}-${rand}`;
-}
-
-async function decrementStock(
-  db: FirebaseFirestore.Firestore,
-  cart: Array<{ id: string; qty: number }>,
-) {
-  await db.runTransaction(async (tx) => {
-    for (const item of cart) {
-      if (!item.id) continue;
-      const ref = db.collection("products").doc(String(item.id));
-      const snap = await tx.get(ref);
-      if (!snap.exists) continue;
-      const cur = (snap.data()?.stocks ?? 0) as number;
-      tx.update(ref, { stocks: Math.max(0, cur - item.qty) });
-    }
-  });
 }
 
 export async function POST(req: NextRequest) {
@@ -72,12 +52,12 @@ export async function POST(req: NextRequest) {
         throw new Error(`Insufficient stock: ${item.title}`);
       verifiedSubtotal += p.price * item.qty;
     }
+
     const verifiedShipping = verifiedSubtotal >= 999 ? 0 : (shipping ?? 0);
     const verifiedCodCharge = isCod
       ? Math.max(40, Math.round(verifiedSubtotal * 0.02))
       : 0;
-    const verifiedGrand =
-      verifiedSubtotal + verifiedShipping + verifiedCodCharge;
+    const verifiedGrand = verifiedSubtotal + verifiedShipping + verifiedCodCharge;
 
     // Write order to Firestore
     await db.collection("orders").add({
@@ -93,15 +73,23 @@ export async function POST(req: NextRequest) {
       codCharge: verifiedCodCharge,
       grandTotal: verifiedGrand,
       paymentMethod,
-      cartData:
-        typeof cartData === "string" ? cartData : JSON.stringify(cartData),
+      cartData: typeof cartData === "string" ? cartData : JSON.stringify(cartData),
       status: isCod ? "Order Placed" : "Awaiting Payment",
       createdAt: new Date(),
     });
 
     if (isCod) {
-      // COD: deduct stock immediately + send email
-      await decrementStock(db, cart);
+      // COD: deduct stock immediately
+      await db.runTransaction(async (tx) => {
+        for (const item of cart) {
+          if (!item.id) continue;
+          const ref = db.collection("products").doc(String(item.id));
+          const snap = await tx.get(ref);
+          if (!snap.exists) continue;
+          const cur = (snap.data()?.stocks ?? 0) as number;
+          tx.update(ref, { stocks: Math.max(0, cur - item.qty) });
+        }
+      });
 
       if (GAS_URL) {
         fetch(GAS_URL, {
@@ -109,13 +97,7 @@ export async function POST(req: NextRequest) {
           headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({
             action: "sendCodEmail",
-            orderId,
-            txnid,
-            name,
-            phone,
-            email,
-            address,
-            items,
+            orderId, txnid, name, phone, email, address, items,
             subtotal: verifiedSubtotal,
             shipping: verifiedShipping,
             codCharge: verifiedCodCharge,
@@ -128,44 +110,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, orderId });
     }
 
-    // Online payment: do NOT deduct stock yet — webhook handles it after PayU confirms
-    // Build PayU fields
-    const amount = verifiedGrand.toFixed(2);
-    const productinfo = `Minella Jewels Order ${orderId}`;
-    const firstname = name.split(" ")[0];
-    const udf1 = orderId;
-    const udf2 = (pincode || "").toString();
-    const udf3 = "";
-    const udf4 = "";
-    const udf5 = "";
+    // Online payment — create Razorpay order
+    // Amount must be in paise (multiply by 100)
+    const amountPaise = Math.round(verifiedGrand * 100);
+    if (amountPaise < 100) throw new Error("Minimum order amount is ₹1");
 
-    const hashStr = `${PAYU_KEY}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|${udf1}|${udf2}|${udf3}|${udf4}|${udf5}||||||${PAYU_SALT}`;
-    const hash = crypto.createHash("sha512").update(hashStr).digest("hex");
+    const rzpRes = await fetch("https://api.razorpay.com/v1/orders", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString("base64")}`,
+      },
+      body: JSON.stringify({
+        amount: amountPaise,
+        currency: "INR",
+        receipt: txnid,
+        notes: {
+          orderId,
+          name,
+          phone,
+          email,
+        },
+      }),
+    });
+
+    if (!rzpRes.ok) {
+      const err = await rzpRes.json();
+      throw new Error(err?.error?.description || "Razorpay order creation failed");
+    }
+
+    const rzpOrder = await rzpRes.json();
 
     return NextResponse.json({
       ok: true,
       orderId,
-      payuUrl: PAYU_URL,
-      formFields: {
-        key: PAYU_KEY,
-        txnid,
-        amount,
-        productinfo,
-        firstname,
-        email,
-        phone,
-        surl: `${STORE_URL}/api/payu-webhook`,
-        furl: `${STORE_URL}/api/payu-webhook`,
-        hash,
-        udf1,
-        udf2,
-        udf3,
-        udf4,
-        udf5,
-      },
+      txnid,
+      razorpayOrderId: rzpOrder.id,
+      amount: rzpOrder.amount,      // paise
+      currency: rzpOrder.currency,
+      name,
+      phone,
+      email,
     });
   } catch (e: any) {
-    console.error("place-order error:", e);
+    console.error("create-order error:", e);
     return NextResponse.json(
       { ok: false, error: e.message || "Server error" },
       { status: 500 },

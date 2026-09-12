@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useCart } from "@/lib/cart";
 import { calcShipping } from "@/lib/shipping";
 import { useRouter } from "next/navigation";
@@ -10,6 +10,13 @@ interface Props {
 }
 
 type PayMethod = "online" | "cod" | null;
+
+// Razorpay types
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
 
 export default function CheckoutModal({ open, onClose }: Props) {
   const { items, subtotal, count, clear } = useCart();
@@ -23,7 +30,6 @@ export default function CheckoutModal({ open, onClose }: Props) {
     label: string;
     zone: string;
   } | null>(null);
-  const payuFormRef = useRef<HTMLFormElement>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -77,6 +83,21 @@ export default function CheckoutModal({ open, onClose }: Props) {
     if (step === 3) placeOrder();
   }
 
+  // Load Razorpay script dynamically
+  function loadRazorpayScript(): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (window.Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  }
+
   async function placeOrder() {
     if (!selectedPay) {
       setErr("Please select a payment method.");
@@ -84,6 +105,7 @@ export default function CheckoutModal({ open, onClose }: Props) {
     }
     setLoading(true);
     setErr("");
+
     const fullAddress = `${form.addr}${form.city ? ", " + form.city : ""}${form.state ? ", " + form.state : ""} - ${form.pin}`;
     const itemsSummary = itemList
       .map((i) => `${i.title} x${i.qty} = Rs.${i.price * i.qty}`)
@@ -95,6 +117,7 @@ export default function CheckoutModal({ open, onClose }: Props) {
       price: i.price,
     }));
     const cleanPhone = form.phone.trim().replace(/^(\+91|91)/, "");
+
     const payload = {
       name: form.name.trim(),
       phone: cleanPhone,
@@ -108,11 +131,11 @@ export default function CheckoutModal({ open, onClose }: Props) {
       paymentMethod:
         selectedPay === "cod" ? "Cash on Delivery" : "Online Payment",
       cartData: cartArr,
-      pincode: form.pin.trim(), // ← ADDED
+      pincode: form.pin.trim(),
     };
 
     try {
-      const res = await fetch("/api/place-order", {
+      const res = await fetch("/api/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -120,6 +143,7 @@ export default function CheckoutModal({ open, onClose }: Props) {
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Order failed");
 
+      // COD — done
       if (selectedPay === "cod") {
         clear();
         onClose();
@@ -129,37 +153,81 @@ export default function CheckoutModal({ open, onClose }: Props) {
         return;
       }
 
-      if (!data.formFields) throw new Error("Payment setup failed");
-      clear();
-      const f = data.formFields;
-      const form_ = payuFormRef.current!;
-      (form_ as any).action = data.payuUrl;
-      (form_.elements.namedItem("key") as HTMLInputElement).value = f.key;
-      (form_.elements.namedItem("txnid") as HTMLInputElement).value = f.txnid;
-      (form_.elements.namedItem("amount") as HTMLInputElement).value = f.amount;
-      (form_.elements.namedItem("productinfo") as HTMLInputElement).value =
-        f.productinfo;
-      (form_.elements.namedItem("firstname") as HTMLInputElement).value =
-        f.firstname;
-      (form_.elements.namedItem("email") as HTMLInputElement).value = f.email;
-      (form_.elements.namedItem("phone") as HTMLInputElement).value = f.phone;
-      (form_.elements.namedItem("surl") as HTMLInputElement).value = f.surl;
-      (form_.elements.namedItem("furl") as HTMLInputElement).value = f.furl;
-      (form_.elements.namedItem("hash") as HTMLInputElement).value = f.hash;
-      (form_.elements.namedItem("udf1") as HTMLInputElement).value =
-        f.udf1 || "";
-      (form_.elements.namedItem("udf2") as HTMLInputElement).value =
-        f.udf2 || "";
-      (form_.elements.namedItem("udf3") as HTMLInputElement).value =
-        f.udf3 || ""; // ← ADDED
-      (form_.elements.namedItem("udf4") as HTMLInputElement).value =
-        f.udf4 || ""; // ← ADDED
-      (form_.elements.namedItem("udf5") as HTMLInputElement).value =
-        f.udf5 || ""; // ← ADDED
-      form_.submit();
+      // Online — open Razorpay modal
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded)
+        throw new Error("Payment gateway failed to load. Please try again.");
+
+      const rzpKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+
+      const rzp = new window.Razorpay({
+        key: rzpKey,
+        order_id: data.razorpayOrderId,
+        amount: data.amount, // paise — Razorpay uses this automatically
+        currency: data.currency,
+        name: "Minella Jewels",
+        description: `Order ${data.orderId}`,
+        image: "/manifest.json", // optional brand logo
+        prefill: {
+          name: data.name,
+          email: data.email,
+          contact: `+91${cleanPhone}`,
+        },
+        theme: { color: "#4a1942" },
+
+        handler: async function (response: {
+          razorpay_payment_id: string;
+          razorpay_order_id: string;
+          razorpay_signature: string;
+        }) {
+          // Payment success — verify on server
+          try {
+            const vRes = await fetch("/api/verify-payment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                txnid: data.txnid,
+              }),
+            });
+            const vData = await vRes.json();
+            clear();
+            onClose();
+            if (vData.ok) {
+              router.push(`/success?method=online&txnid=${data.txnid}`);
+            } else {
+              router.push(`/success?method=failed&txnid=${data.txnid}`);
+            }
+          } catch {
+            clear();
+            onClose();
+            router.push(`/success?method=failed&txnid=${data.txnid}`);
+          }
+        },
+
+        modal: {
+          ondismiss: function () {
+            // User closed the modal without paying
+            setLoading(false);
+            setErr("Payment cancelled. You can try again.");
+          },
+        },
+      });
+
+      rzp.on("payment.failed", function (response: any) {
+        setLoading(false);
+        setErr(
+          response?.error?.description ||
+            "Payment failed. Please try a different method.",
+        );
+      });
+
+      rzp.open();
+      setLoading(false); // loading stops once modal is open
     } catch (e: any) {
       setErr(e.message || "Something went wrong. Please try again.");
-    } finally {
       setLoading(false);
     }
   }
@@ -196,25 +264,6 @@ export default function CheckoutModal({ open, onClose }: Props) {
           <div className="spinner-text">Processing…</div>
         </div>
       )}
-
-      {/* Hidden PayU form */}
-      <form ref={payuFormRef} method="POST" style={{ display: "none" }}>
-        <input type="hidden" name="key" />
-        <input type="hidden" name="txnid" />
-        <input type="hidden" name="amount" />
-        <input type="hidden" name="productinfo" />
-        <input type="hidden" name="firstname" />
-        <input type="hidden" name="email" />
-        <input type="hidden" name="phone" />
-        <input type="hidden" name="surl" />
-        <input type="hidden" name="furl" />
-        <input type="hidden" name="hash" />
-        <input type="hidden" name="udf1" />
-        <input type="hidden" name="udf2" />
-        <input type="hidden" name="udf3" /> {/* ← ADDED */}
-        <input type="hidden" name="udf4" /> {/* ← ADDED */}
-        <input type="hidden" name="udf5" /> {/* ← ADDED */}
-      </form>
 
       <div className="overlay open" onClick={handleClose} />
       <div className="co-modal open">
@@ -390,8 +439,8 @@ export default function CheckoutModal({ open, onClose }: Props) {
                   <div>
                     <div className="cod-card-label">Pay Online</div>
                     <div className="cod-card-sub">
-                      UPI, Cards, Net Banking, Wallets &amp; EMI — all handled
-                      securely via PayU
+                      UPI, Cards, Net Banking, Wallets &amp; EMI — secured by
+                      Razorpay
                     </div>
                   </div>
                 </div>
@@ -409,6 +458,7 @@ export default function CheckoutModal({ open, onClose }: Props) {
                     </div>
                   </div>
                 </div>
+
                 {selectedPay && (
                   <div className="confirm-box">
                     <div className="confirm-box-title">Order Summary</div>
@@ -458,8 +508,8 @@ export default function CheckoutModal({ open, onClose }: Props) {
                       marginTop: 8,
                     }}
                   >
-                    You'll be redirected to PayU's secure payment page. All
-                    methods available there.
+                    Razorpay's secure modal will open — UPI, cards, net banking
+                    all available.
                   </div>
                 )}
               </div>
