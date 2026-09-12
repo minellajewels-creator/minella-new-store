@@ -14,13 +14,33 @@ const CATS = [
   { key: 'ring', label: 'Rings' },
 ];
 
-interface Props { initialProducts: Product[] }
+interface CategoryAssets {
+  all: string;
+  earring: string;
+  necklace: string;
+  bracelet: string;
+  ring: string;
+  anklet: string;
+}
 
-export default function ProductGrid({ initialProducts }: Props) {
+interface Props {
+  initialProducts: Product[];
+  categoryAssets: CategoryAssets;
+}
+
+const FALLBACKS: CategoryAssets = {
+  all: '/assets/images/categories/necklaces.jpg',
+  earring: '/assets/images/categories/earrings.jpg',
+  necklace: '/assets/images/categories/necklaces.jpg',
+  bracelet: '/assets/images/categories/bracelets.jpg',
+  ring: '/assets/images/categories/rings.jpg',
+  anklet: '/assets/images/categories/anklets.jpg',
+};
+
+export default function ProductGrid({ initialProducts, categoryAssets }: Props) {
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [activeCat, setActiveCat] = useState('all');
 
-  // Realtime stock updates from Firestore
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'products'), (snap) => {
       const live: Product[] = snap.docs
@@ -35,9 +55,13 @@ export default function ProductGrid({ initialProducts }: Props) {
     ? products
     : products.filter((p) => getProductCategory(p) === activeCat);
 
+  function getCatImg(key: string): string {
+    const url = categoryAssets[key as keyof CategoryAssets];
+    return url || FALLBACKS[key as keyof CategoryAssets] || '';
+  }
+
   return (
     <>
-      {/* Category bar */}
       <div className="cat-bar" id="shopAnchor">
         {CATS.map((c) => (
           <div
@@ -47,7 +71,7 @@ export default function ProductGrid({ initialProducts }: Props) {
           >
             <div className="cat-img">
               <img
-                src={`/assets/images/categories/${c.key === 'all' ? 'necklaces' : c.key + 's'}.jpg`}
+                src={getCatImg(c.key)}
                 alt={c.label}
                 onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }}
               />
@@ -57,7 +81,6 @@ export default function ProductGrid({ initialProducts }: Props) {
         ))}
       </div>
 
-      {/* Grid */}
       <div className="grid-wrap">
         <div className="grid">
           {visible.map((p) => (

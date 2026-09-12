@@ -1055,6 +1055,10 @@
             Dashboard
           </button>
           <span class="sidebar-section">Store</span>
+          <button class="nav-item" onclick="navigate('assets')" id="nav-assets">
+            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            Site Assets
+          </button>
           <button class="nav-item" onclick="navigate('orders')" id="nav-orders">
             <svg
               class="nav-icon"
@@ -1115,6 +1119,8 @@
         collection,
         getDocs,
         doc,
+        getDoc,
+        setDoc,
         updateDoc,
         addDoc,
         deleteDoc,
@@ -1207,7 +1213,7 @@
       // ── NAVIGATION ──
       window.navigate = async function (page) {
         window._page = page;
-        ["dashboard", "orders", "products"].forEach((p) =>
+        ["dashboard", "orders", "products", "assets"].forEach((p) =>
           document
             .getElementById("nav-" + p)
             ?.classList.toggle("active", p === page),
@@ -1217,6 +1223,7 @@
         if (page === "dashboard") await renderDashboard();
         else if (page === "orders") await renderOrders();
         else if (page === "products") await renderProducts();
+        else if (page === "assets") await renderAssets();
       };
 
       // ── FIRESTORE ──
@@ -1893,6 +1900,117 @@
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#39;");
       }
+
+      // ── SITE ASSETS ──
+      const ASSET_SLOTS = [
+        { key: 'hero_url',        label: 'Hero Image',           hint: 'Main banner behind the homepage headline', folder: 'minella/site/hero' },
+        { key: 'logo_url',        label: 'Logo',                 hint: 'Displayed in the navbar (PNG with transparent bg recommended)', folder: 'minella/site/logo' },
+        { key: 'og_image_url',    label: 'OG / Share Image',     hint: 'Shows when link is shared on WhatsApp, social etc (1200×630)', folder: 'minella/site/og' },
+        { key: 'cat_all_url',     label: 'Category: All',        hint: 'Circle image for "All" category filter', folder: 'minella/site/categories' },
+        { key: 'cat_earring_url', label: 'Category: Earrings',   hint: '', folder: 'minella/site/categories' },
+        { key: 'cat_necklace_url',label: 'Category: Necklaces',  hint: '', folder: 'minella/site/categories' },
+        { key: 'cat_bracelet_url',label: 'Category: Bracelets',  hint: '', folder: 'minella/site/categories' },
+        { key: 'cat_ring_url',    label: 'Category: Rings',      hint: '', folder: 'minella/site/categories' },
+        { key: 'cat_anklet_url',  label: 'Category: Anklets',    hint: '', folder: 'minella/site/categories' },
+      ];
+
+      window._siteAssets = {};
+
+      async function renderAssets() {
+        // Load current assets from Firestore
+        try {
+          const snap = await getDoc(doc(window._db, 'site_assets', 'main'));
+          window._siteAssets = snap.exists() ? snap.data() : {};
+        } catch(e) {
+          window._siteAssets = {};
+        }
+
+        document.getElementById('main-content').innerHTML = `
+          <div class="page-hdr">
+            <div><div class="page-title">Site Assets</div><div class="page-sub">Upload and manage your site images — changes go live on next page load</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:18px;">
+            ${ASSET_SLOTS.map(slot => {
+              const url = window._siteAssets[slot.key] || '';
+              return `
+              <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;">
+                <div style="font-size:13px;font-weight:600;color:var(--text)">${slot.label}</div>
+                ${slot.hint ? `<div style="font-size:11px;color:var(--muted);line-height:1.4">${slot.hint}</div>` : ''}
+                <div id="asset-preview-${slot.key}" style="width:100%;aspect-ratio:4/3;border-radius:8px;overflow:hidden;border:1.5px solid var(--border);background:var(--bg);display:flex;align-items:center;justify-content:center;position:relative;">
+                  ${url
+                    ? `<img src="${imgThumb(url, 300)}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'"/>`
+                    : `<span style="font-size:28px;color:#d0cac4">🖼️</span>`
+                  }
+                </div>
+                <div style="display:flex;gap:6px;">
+                  <button class="btn-sm btn-rose" style="flex:1;font-size:12px;" onclick="triggerAssetUpload('${slot.key}','${slot.folder}')">
+                    ${url ? 'Replace' : 'Upload'}
+                  </button>
+                  ${url ? `<button class="btn-sm btn-outline" style="font-size:12px;color:var(--red);border-color:#fcc;" onclick="clearAsset('${slot.key}')">Remove</button>` : ''}
+                </div>
+                ${url ? `<div style="font-size:10px;color:var(--muted);word-break:break-all;line-height:1.3;">${url.length > 60 ? url.slice(0,60)+'…' : url}</div>` : ''}
+              </div>`;
+            }).join('')}
+          </div>`;
+      }
+
+      let _pendingAssetUpload = null;
+
+      window.triggerAssetUpload = function(key, folder) {
+        _pendingAssetUpload = { key, folder };
+        const input = document.getElementById('img-file-input');
+        input.value = '';
+        // Override handler temporarily
+        input.onchange = handleAssetFileChange;
+        input.click();
+      };
+
+      async function handleAssetFileChange(e) {
+        const file = e.target.files?.[0];
+        if (!file || !_pendingAssetUpload) return;
+        const { key, folder } = _pendingAssetUpload;
+        _pendingAssetUpload = null;
+
+        // Show spinner in preview
+        const preview = document.getElementById(`asset-preview-${key}`);
+        if (preview) preview.innerHTML = '<div class="img-spinner"><div class="img-spinner-ring"></div></div>';
+
+        try {
+          const publicId = `${folder}/${key}_${Date.now()}`;
+          const fd = new FormData();
+          fd.append('file', file);
+          fd.append('upload_preset', CLD_PRESET);
+          fd.append('public_id', publicId);
+          fd.append('folder', folder);
+
+          const res = await fetch(`https://api.cloudinary.com/v1_1/${CLD_CLOUD}/image/upload`, { method: 'POST', body: fd });
+          if (!res.ok) throw new Error('Upload failed: ' + await res.text());
+          const data = await res.json();
+          const url = data.secure_url;
+
+          // Save to Firestore site_assets/main
+          await setDoc(doc(window._db, 'site_assets', 'main'), { [key]: url }, { merge: true });
+          window._siteAssets[key] = url;
+
+          showToast(`${key.replace(/_url$/, '').replace(/_/g,' ')} uploaded ✓`, 'success');
+          await renderAssets();
+        } catch(err) {
+          showToast('Upload failed: ' + err.message, 'error');
+          await renderAssets();
+        }
+      }
+
+      window.clearAsset = async function(key) {
+        if (!confirm('Remove this image? The site will fall back to the default.')) return;
+        try {
+          await updateDoc(doc(window._db, 'site_assets', 'main'), { [key]: '' });
+          window._siteAssets[key] = '';
+          showToast('Image removed', 'info');
+          await renderAssets();
+        } catch(err) {
+          showToast('Remove failed: ' + err.message, 'error');
+        }
+      };
 
       window.showToast = function (msg, type = "success") {
         const wrap = document.getElementById("toast-wrap");

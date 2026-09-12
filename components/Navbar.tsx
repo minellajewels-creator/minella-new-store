@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { useCart } from '@/lib/cart';
 import CartDrawer from './CartDrawer';
 
-export default function Navbar() {
+interface Props { logoUrl?: string; }
+
+export default function Navbar({ logoUrl }: Props) {
   const count = useCart((s) => s.count());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -19,12 +21,18 @@ export default function Navbar() {
     { href: '/jewellery-care', label: 'Jewellery Care', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> },
   ];
 
+  const LogoContent = () => logoUrl ? (
+    <img src={logoUrl} alt="Minella Jewels" style={{ height: 36, width: 'auto', objectFit: 'contain' }} />
+  ) : (
+    <span style={{ fontFamily: "'Libre Baskerville',serif", fontSize: '20px', color: 'var(--plum)', letterSpacing: '1px' }}>Minella Jewels</span>
+  );
+
   return (
     <>
       <nav className="topbar">
         <div id="topbarLogo">
           <Link href="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
-            <span style={{ fontFamily: "'Libre Baskerville',serif", fontSize: '20px', color: 'var(--plum)', letterSpacing: '1px' }}>Minella Jewels</span>
+            <LogoContent />
           </Link>
         </div>
         <div className="topbar-nav">
@@ -43,7 +51,6 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* Sidebar */}
       <div className={`sidebar-overlay${sidebarOpen ? ' open' : ''}`} onClick={() => setSidebarOpen(false)} />
       <div className={`sidebar${sidebarOpen ? ' open' : ''}`}>
         <div className="sidebar-head">
@@ -52,15 +59,11 @@ export default function Navbar() {
         </div>
         <nav className="sidebar-nav">
           {navLinks.slice(0, 3).map((l) => (
-            <Link key={l.href} href={l.href} onClick={() => setSidebarOpen(false)}>
-              {l.icon}{l.label}
-            </Link>
+            <Link key={l.href} href={l.href} onClick={() => setSidebarOpen(false)}>{l.icon}{l.label}</Link>
           ))}
           <div className="sidebar-divider" />
           {navLinks.slice(3).map((l) => (
-            <Link key={l.href} href={l.href} onClick={() => setSidebarOpen(false)}>
-              {l.icon}{l.label}
-            </Link>
+            <Link key={l.href} href={l.href} onClick={() => setSidebarOpen(false)}>{l.icon}{l.label}</Link>
           ))}
         </nav>
         <div className="sidebar-footer">© 2026 Minella Jewels · Coimbatore</div>

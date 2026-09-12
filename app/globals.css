@@ -451,7 +451,7 @@ img { max-width: 100%; display: block; }
 @media(max-width:480px) { .hero { height: 300px; } }
 .hero-bg {
   position: absolute; inset: 0; background-size: cover; background-position: center;
-  background-image: url('/assets/images/hero/hero-1.webp');
+  /* background-image set dynamically via inline style from Firestore */
 }
 .hero-overlay { position: absolute; inset: 0; background: rgba(0,0,0,.3); }
 .hero-content { position: relative; z-index: 2; color: #fff; max-width: 600px; padding: 0 20px; text-align: center; }

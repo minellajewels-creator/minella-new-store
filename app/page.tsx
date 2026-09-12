@@ -1,5 +1,6 @@
 import { getAdminDb } from "@/lib/firebase-admin";
 import { Product } from "@/lib/products";
+import { getSiteAssets } from "@/lib/site-assets";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import ProductGrid from "@/components/ProductGrid";
@@ -9,84 +10,11 @@ export const dynamic = "force-dynamic";
 
 const STORE_URL = process.env.NEXT_PUBLIC_STORE_URL || "https://minella.in";
 
-const jsonLd = {
-  "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "Organization",
-      name: "Minella Jewels",
-      url: STORE_URL,
-      logo: `${STORE_URL}/favicon.png`,
-      sameAs: ["https://instagram.com/minellajewels"],
-      contactPoint: {
-        "@type": "ContactPoint",
-        telephone: "+91-9080014835",
-        contactType: "customer service",
-        areaServed: "IN",
-        availableLanguage: ["English", "Tamil"],
-      },
-    },
-    {
-      "@type": "WebSite",
-      name: "Minella Jewels",
-      url: STORE_URL,
-      potentialAction: {
-        "@type": "SearchAction",
-        target: `${STORE_URL}/?q={search_term_string}`,
-        "query-input": "required name=search_term_string",
-      },
-    },
-  ],
-};
-
-const faqJsonLd = {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  mainEntity: [
-    {
-      "@type": "Question",
-      name: "What is anti-tarnish jewellery?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "Anti-tarnish jewellery uses a protective coating that prevents oxidation, keeping it shiny for months even with daily wear, sweat, and water exposure.",
-      },
-    },
-    {
-      "@type": "Question",
-      name: "Is Minella Jewels jewellery waterproof?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "Yes. All Minella Jewels pieces are 100% waterproof and sweat-resistant. You can wear them in rain, while exercising, or in the shower.",
-      },
-    },
-    {
-      "@type": "Question",
-      name: "Is cash on delivery available?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "Yes. Minella Jewels offers Cash on Delivery (COD) across India. Free shipping on orders above ₹999.",
-      },
-    },
-    {
-      "@type": "Question",
-      name: "Is the jewellery skin safe?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "Yes. All pieces are nickel-free and hypoallergenic, safe for sensitive skin.",
-      },
-    },
-  ],
-};
-
-// Strip Firestore class instances (Timestamps etc.) — only keep plain scalar fields
 function sanitizeProduct(id: string, data: FirebaseFirestore.DocumentData): Product {
   const plain: Record<string, unknown> = { id };
   for (const [k, v] of Object.entries(data)) {
     if (v === null || v === undefined) { plain[k] = ""; continue; }
-    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
-      plain[k] = v;
-    }
-    // Skip Timestamps, GeoPoints, References, Arrays of objects — not needed for Product
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") plain[k] = v;
   }
   return plain as unknown as Product;
 }
@@ -99,80 +27,87 @@ async function getProducts(): Promise<Product[]> {
       .map((d) => sanitizeProduct(d.id, d.data()))
       .filter((p) => p.title)
       .sort((a, b) => Number(a.id) - Number(b.id));
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 export default async function HomePage() {
-  const products = await getProducts();
+  const [products, assets] = await Promise.all([getProducts(), getSiteAssets()]);
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        name: "Minella Jewels",
+        url: STORE_URL,
+        logo: assets.logo_url || `${STORE_URL}/favicon.png`,
+        sameAs: ["https://instagram.com/minellajewels"],
+        contactPoint: { "@type": "ContactPoint", telephone: "+91-9080014835", contactType: "customer service", areaServed: "IN", availableLanguage: ["English", "Tamil"] },
+      },
+      {
+        "@type": "WebSite",
+        name: "Minella Jewels",
+        url: STORE_URL,
+        potentialAction: { "@type": "SearchAction", target: `${STORE_URL}/?q={search_term_string}`, "query-input": "required name=search_term_string" },
+      },
+    ],
+  };
+
+  const faqJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: [
+      { "@type": "Question", name: "What is anti-tarnish jewellery?", acceptedAnswer: { "@type": "Answer", text: "Anti-tarnish jewellery uses a protective coating that prevents oxidation, keeping it shiny for months even with daily wear, sweat, and water exposure." } },
+      { "@type": "Question", name: "Is Minella Jewels jewellery waterproof?", acceptedAnswer: { "@type": "Answer", text: "Yes. All Minella Jewels pieces are 100% waterproof and sweat-resistant." } },
+      { "@type": "Question", name: "Is cash on delivery available?", acceptedAnswer: { "@type": "Answer", text: "Yes. Minella Jewels offers Cash on Delivery (COD) across India. Free shipping on orders above ₹999." } },
+      { "@type": "Question", name: "Is the jewellery skin safe?", acceptedAnswer: { "@type": "Answer", text: "Yes. All pieces are nickel-free and hypoallergenic, safe for sensitive skin." } },
+    ],
+  };
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
-      />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
 
-      <Navbar />
+      <Navbar logoUrl={assets.logo_url} />
 
-      {/* Hero */}
+      {/* Hero — inject URL as inline CSS var so it works with dynamic URLs */}
       <section className="hero">
-        <div className="hero-bg" />
+        <div className="hero-bg" style={{ backgroundImage: `url('${assets.hero_url}')` }} />
         <div className="hero-overlay" />
         <div className="hero-content">
           <h1>Every Day Every WEAR</h1>
           <p>18K Gold Plated &bull; Anti-Tarnish &bull; Skin Friendly</p>
-          <button className="hero-cta" onClick={undefined}>
-            Shop Now &rarr;
-          </button>
+          <button className="hero-cta" onClick={undefined}>Shop Now &rarr;</button>
         </div>
       </section>
 
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `document.querySelector('.hero-cta')?.addEventListener('click',function(){document.getElementById('shopAnchor')?.scrollIntoView({behavior:'smooth'});});`,
-        }}
-      />
+      <script dangerouslySetInnerHTML={{ __html: `document.querySelector('.hero-cta')?.addEventListener('click',function(){document.getElementById('shopAnchor')?.scrollIntoView({behavior:'smooth'});});` }} />
 
       {/* Trust bar */}
       <div className="trust-bar">
         {[
-          {
-            icon: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></>,
-            label: <><strong>Anti-Tarnish</strong> Guaranteed</>,
-          },
-          {
-            icon: <><rect x="1" y="3" width="15" height="13" /><polygon points="16 8 20 8 23 11 23 16 16 16 16 8" /><circle cx="5.5" cy="18.5" r="2.5" /><circle cx="18.5" cy="18.5" r="2.5" /></>,
-            label: <><strong>Free Shipping</strong> on ₹999+</>,
-          },
-          {
-            icon: <><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></>,
-            label: <><strong>COD</strong> Available</>,
-          },
-          {
-            icon: <><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></>,
-            label: <><strong>Handpicked</strong> Quality</>,
-          },
-          {
-            icon: <><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>,
-            label: <><strong>Secure</strong> Payments</>,
-          },
+          { icon: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></>, label: <><strong>Anti-Tarnish</strong> Guaranteed</> },
+          { icon: <><rect x="1" y="3" width="15" height="13" /><polygon points="16 8 20 8 23 11 23 16 16 16 16 8" /><circle cx="5.5" cy="18.5" r="2.5" /><circle cx="18.5" cy="18.5" r="2.5" /></>, label: <><strong>Free Shipping</strong> on ₹999+</> },
+          { icon: <><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></>, label: <><strong>COD</strong> Available</> },
+          { icon: <><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></>, label: <><strong>Handpicked</strong> Quality</> },
+          { icon: <><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>, label: <><strong>Secure</strong> Payments</> },
         ].map((t, i) => (
           <div key={i} className="trust-item">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
-              {t.icon}
-            </svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">{t.icon}</svg>
             <span>{t.label}</span>
           </div>
         ))}
       </div>
 
-      <ProductGrid initialProducts={products} />
+      <ProductGrid initialProducts={products} categoryAssets={{
+        all: assets.cat_all_url,
+        earring: assets.cat_earring_url,
+        necklace: assets.cat_necklace_url,
+        bracelet: assets.cat_bracelet_url,
+        ring: assets.cat_ring_url,
+        anklet: assets.cat_anklet_url,
+      }} />
 
       <a href="https://wa.me/919080014835" target="_blank" rel="noopener" id="waBtn" aria-label="Chat on WhatsApp">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="white">
